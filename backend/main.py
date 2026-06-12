@@ -48,13 +48,15 @@ async def read_root():
 @app.get("/jobs", tags=["Jobs"])
 async def get_jobs(
     query: str = Query("Python", description="Job title or keywords"),
-    location: str = Query("Kerala", description="Location to search in")
+    location: str = Query("Kerala", description="Location to search in"),
+    sources: Optional[str] = Query(None, description="Comma-separated list of job source boards to search")
 ):
     """
     Fetch jobs in real-time using the scraper (No DB/Auth)
     """
     try:
-        jobs = scraper.get_all_jobs(query=query, location=location)
+        selected_platforms = [s.strip() for s in sources.split(",")] if sources else None
+        jobs = scraper.get_all_jobs(query=query, location=location, selected_platforms=selected_platforms)
         return jobs
     except Exception as e:
         return {"error": f"Scraping failed: {str(e)}"}

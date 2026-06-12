@@ -19,25 +19,93 @@ class JobScraper:
         self.chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         self.chrome_options.add_argument("--disable-gpu")
         self.chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+        self.preferred_browser = None  # Cache successful browser to prevent slow fallbacks
+        self.last_driver_error = None
 
-        # Default linux fallback
-        self.chrome_options.binary_location = "/usr/bin/google-chrome"
-        
-        render_chrome_path = "/opt/render/project/.render/chrome_v2/chrome-linux64/chrome"
-        if os.path.exists(render_chrome_path):
-            self.chrome_options.binary_location = render_chrome_path
+        # Only override binary_location on Linux systems
+        import platform
+        if platform.system() == "Linux":
+            self.chrome_options.binary_location = "/usr/bin/google-chrome"
+            render_chrome_path = "/opt/render/project/.render/chrome_v2/chrome-linux64/chrome"
+            if os.path.exists(render_chrome_path):
+                self.chrome_options.binary_location = render_chrome_path
 
-    def get_driver(self):
+    def _get_chrome_driver(self):
         try:
             service = Service(ChromeDriverManager().install())
             driver = webdriver.Chrome(service=service, options=self.chrome_options)
-            self.last_driver_error = None
             return driver
         except Exception as e:
             import traceback
-            self.last_driver_error = traceback.format_exc()
-            print(f"Error initializing Chrome driver:\n{self.last_driver_error}")
+            self.last_chrome_error = traceback.format_exc()
             return None
+
+    def _get_edge_driver(self):
+        try:
+            from selenium.webdriver.edge.service import Service as EdgeService
+            from selenium.webdriver.edge.options import Options as EdgeOptions
+            from webdriver_manager.microsoft import EdgeChromiumDriverManager
+            
+            edge_options = EdgeOptions()
+            edge_options.add_argument("--headless")
+            edge_options.add_argument("--no-sandbox")
+            edge_options.add_argument("--disable-dev-shm-usage")
+            edge_options.add_argument("--disable-gpu")
+            edge_options.add_argument("--disable-blink-features=AutomationControlled")
+            edge_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+            
+            service = EdgeService(EdgeChromiumDriverManager().install())
+            driver = webdriver.Edge(service=service, options=edge_options)
+            return driver
+        except Exception as e:
+            import traceback
+            self.last_edge_error = traceback.format_exc()
+            return None
+
+    def get_driver(self):
+        import platform
+        is_windows = platform.system() == "Windows"
+
+        # On Windows, try Edge first to avoid slow Chrome timeouts if Chrome is not installed
+        if is_windows:
+            if self.preferred_browser == "chrome":
+                driver = self._get_chrome_driver()
+                if driver: return driver
+            
+            # Default to Edge first on Windows
+            driver = self._get_edge_driver()
+            if driver:
+                self.preferred_browser = "edge"
+                self.last_driver_error = None
+                return driver
+                
+            # If Edge fails, try Chrome
+            driver = self._get_chrome_driver()
+            if driver:
+                self.preferred_browser = "chrome"
+                self.last_driver_error = None
+                return driver
+        else:
+            # On Linux/Render, prioritize Chrome first
+            if self.preferred_browser == "edge":
+                driver = self._get_edge_driver()
+                if driver: return driver
+
+            driver = self._get_chrome_driver()
+            if driver:
+                self.preferred_browser = "chrome"
+                self.last_driver_error = None
+                return driver
+
+            # Fallback to Edge
+            driver = self._get_edge_driver()
+            if driver:
+                self.preferred_browser = "edge"
+                self.last_driver_error = None
+                return driver
+
+        self.last_driver_error = f"Chrome Error:\n{getattr(self, 'last_chrome_error', 'N/A')}\n\nEdge Error:\n{getattr(self, 'last_edge_error', 'N/A')}"
+        return None
 
     def scrape_naukri(self, query, location):
         driver = self.get_driver()
@@ -195,7 +263,7 @@ class JobScraper:
         finally: driver.quit()
         return jobs
 
-    def get_all_jobs(self, query="Python", location="Kerala"):
+    def get_all_jobs(self, query="Python", location="Kerala", selected_platforms=None):
         all_results = []
         debug_info = []
         print(f"Scraping results for '{query}' in '{location}'...")
@@ -208,6 +276,14 @@ class JobScraper:
             ("Indeed", self.scrape_indeed),
             ("Glassdoor", self.scrape_glassdoor)
         ]
+        
+        # Filter platforms if selected_platforms is provided
+        if selected_platforms:
+            selected_lower = [p.lower() for p in selected_platforms]
+            platforms = [p for p in platforms if p[0].lower() in selected_lower]
+            
+        if not platforms:
+            return [{"error": "NO_SOURCES_SELECTED", "details": "Please select at least one job source platform."}]
         
         # Test driver first
         test_driver = self.get_driver()
