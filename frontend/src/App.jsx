@@ -1027,7 +1027,7 @@ function App() {
 
       {/* Main Workspace Area */}
       <main className="main-container">
-        {loading && (
+        {loading && jobs.length === 0 && (
           <div className="console-progress-card-overlay animate-fade-in">
             <div className="console-progress-card premium-progress-card animate-slide-up">
               {/* Progress Bar Container */}
@@ -1285,6 +1285,11 @@ function App() {
             ) : (
               /* Results View: Fixed Search Bar & Skills, Scrollable Cards Below */
               <>
+                {loading && (
+                  <div style={{ background: '#f59e0b', color: 'white', textAlign: 'center', padding: '8px', fontSize: '14px', fontWeight: 'bold' }}>
+                    ⏳ Still fetching jobs from other platforms in the background... You can start browsing now!
+                  </div>
+                )}
                 <div className="search-box-section results-view">
                   <form onSubmit={(e) => handleScrape(e)} className="search-form-bar">
                     <div className="search-input-field">
