@@ -870,8 +870,9 @@ class JobScraper:
                 return [{"error": "CHROME_CRASH", "details": self.last_driver_error or "Driver initialized as None"}]
             test_driver.quit()
         
-        # Run scraping concurrently to make it fast
-        with ThreadPoolExecutor(max_workers=total_workers) as executor:
+        # Run scraping concurrently to make it fast, but limit max_workers to 3 to prevent
+        # Render's free tier from running out of memory (OOM) and crashing when launching 8 Chrome instances at once.
+        with ThreadPoolExecutor(max_workers=3) as executor:
             future_to_platform = {
                 executor.submit(scrape_func, query, location): name
                 for name, scrape_func in platforms
