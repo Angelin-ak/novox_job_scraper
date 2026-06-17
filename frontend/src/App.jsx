@@ -710,52 +710,89 @@ function App() {
     }, 1500)
 
     try {
-      const formData = new FormData()
-      formData.append('query', activeQuery)
-      formData.append('location', activeLoc)
-      if (activePlatforms.length > 0) {
-        formData.append('sources', activePlatforms.join(','))
+      let allFoundJobs = [];
+      let anySuccess = false;
+
+      // Make sequential requests for each platform to prevent backend OOM (Out Of Memory)
+      // and prevent Render 100-second timeouts by breaking it into smaller chunks!
+      for (const platform of activePlatforms) {
+        try {
+          const formData = new FormData()
+          formData.append('query', activeQuery)
+          formData.append('location', activeLoc)
+          formData.append('sources', platform)
+          
+          const response = await fetch(`${API_BASE_URL}/jobs`, {
+            method: 'POST',
+            body: formData
+          })
+          const data = await response.json()
+          
+          if (Array.isArray(data) && data.length > 0 && !data[0].error) {
+            anySuccess = true;
+            allFoundJobs = [...allFoundJobs, ...data];
+            // Sort by relevance
+            allFoundJobs.sort((a, b) => (b.relevance || 0) - (a.relevance || 0));
+            
+            // Progressively update the UI!
+            setJobs(allFoundJobs);
+            if (!selectedJob || allFoundJobs.length === data.length) {
+              setSelectedJob(allFoundJobs[0]);
+            }
+          }
+        } catch (err) {
+          console.error(`Failed to fetch from ${platform}:`, err);
+        }
       }
+      
+      // Handle Custom Feeds
       if (rssFeeds.length > 0) {
-        formData.append('custom_feeds', JSON.stringify(rssFeeds))
-      }
-      if (xmlFile) {
-        formData.append('file', xmlFile)
+        try {
+          const formData = new FormData()
+          formData.append('query', activeQuery)
+          formData.append('location', activeLoc)
+          formData.append('custom_feeds', JSON.stringify(rssFeeds))
+          const response = await fetch(`${API_BASE_URL}/jobs`, { method: 'POST', body: formData })
+          const data = await response.json()
+          if (Array.isArray(data) && data.length > 0 && !data[0].error) {
+            anySuccess = true;
+            allFoundJobs = [...allFoundJobs, ...data].sort((a, b) => (b.relevance || 0) - (a.relevance || 0));
+            setJobs(allFoundJobs);
+          }
+        } catch (err) {}
       }
 
-      const response = await fetch(`${API_BASE_URL}/jobs`, {
-        method: 'POST',
-        body: formData
-      })
-      const data = await response.json()
-      
+      // Handle XML File
+      if (xmlFile) {
+        try {
+          const formData = new FormData()
+          formData.append('query', activeQuery)
+          formData.append('location', activeLoc)
+          formData.append('file', xmlFile)
+          const response = await fetch(`${API_BASE_URL}/jobs`, { method: 'POST', body: formData })
+          const data = await response.json()
+          if (Array.isArray(data) && data.length > 0 && !data[0].error) {
+            anySuccess = true;
+            allFoundJobs = [...allFoundJobs, ...data].sort((a, b) => (b.relevance || 0) - (a.relevance || 0));
+            setJobs(allFoundJobs);
+          }
+        } catch (err) {}
+      }
+
       clearInterval(logInterval)
 
-      if (Array.isArray(data)) {
-        if (data.length > 0 && data[0].error) {
-          const errObj = data[0]
-          const errMsg = Array.isArray(errObj.details) ? errObj.details.join('\n') : (errObj.details || errObj.error)
-          setError(errMsg)
-          setJobs([])
-        } else {
-          setJobs(data)
-          if (data.length > 0) {
-            setSelectedJob(data[0])
-          }
-          updateRecentSearches(activeQuery, activeLoc)
-        }
-      } else if (data.error) {
-        const errMsg = Array.isArray(data.details) ? data.details.join('\n') : (data.details || data.error)
-        setError(errMsg)
-        setJobs([])
-      } else {
-        setError('Unexpected response format from scraper')
+      if (anySuccess) {
+        updateRecentSearches(activeQuery, activeLoc)
+      } else if (allFoundJobs.length === 0) {
+        setError('No relevant jobs found matching the search keywords or location.')
       }
+
     } catch (err) {
       clearInterval(logInterval)
       setError(`Failed to connect to backend: ${err.message}. Make sure the FastAPI server is running.`)
     } finally {
       setLoading(false)
+      clearInterval(logInterval)
     }
   }
 
