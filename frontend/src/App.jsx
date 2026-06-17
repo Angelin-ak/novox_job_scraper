@@ -216,15 +216,15 @@ function App() {
 
   // Scraping platform selections
   const [selectedPlatforms, setSelectedPlatforms] = useState({
+    Internshala: true,
+    WeWorkRemotely: true,
     Naukri: true,
     LinkedIn: true,
     Indeed: true,
-    Internshala: true,
     Glassdoor: true,
     Foundit: true,
     Shine: true,
-    Hirist: true,
-    WeWorkRemotely: true
+    Hirist: true
   })
 
   // Local XML upload file state
@@ -713,8 +713,48 @@ function App() {
       let allFoundJobs = [];
       let anySuccess = false;
 
+      // === RUN FAST SOURCES FIRST === //
+      
+      // 1. Handle Custom Feeds (Instant)
+      if (rssFeeds.length > 0) {
+        try {
+          const formData = new FormData()
+          formData.append('query', activeQuery)
+          formData.append('location', activeLoc)
+          formData.append('custom_feeds', JSON.stringify(rssFeeds))
+          const response = await fetch(`${API_BASE_URL}/jobs`, { method: 'POST', body: formData })
+          const data = await response.json()
+          if (Array.isArray(data) && data.length > 0 && !data[0].error) {
+            anySuccess = true;
+            allFoundJobs = [...allFoundJobs, ...data].sort((a, b) => (b.relevance || 0) - (a.relevance || 0));
+            setJobs(allFoundJobs);
+            if (!selectedJob || allFoundJobs.length === data.length) setSelectedJob(allFoundJobs[0]);
+          }
+        } catch (err) {}
+      }
+
+      // 2. Handle XML File (Instant)
+      if (xmlFile) {
+        try {
+          const formData = new FormData()
+          formData.append('query', activeQuery)
+          formData.append('location', activeLoc)
+          formData.append('file', xmlFile)
+          const response = await fetch(`${API_BASE_URL}/jobs`, { method: 'POST', body: formData })
+          const data = await response.json()
+          if (Array.isArray(data) && data.length > 0 && !data[0].error) {
+            anySuccess = true;
+            allFoundJobs = [...allFoundJobs, ...data].sort((a, b) => (b.relevance || 0) - (a.relevance || 0));
+            setJobs(allFoundJobs);
+            if (!selectedJob) setSelectedJob(allFoundJobs[0]);
+          }
+        } catch (err) {}
+      }
+
+      // === RUN PLATFORM SCRAPERS SEQUENTIALLY === //
       // Make sequential requests for each platform to prevent backend OOM (Out Of Memory)
       // and prevent Render 100-second timeouts by breaking it into smaller chunks!
+      // (The fast platforms like Internshala are at the top of the list and will finish instantly)
       for (const platform of activePlatforms) {
         try {
           const formData = new FormData()
@@ -743,40 +783,6 @@ function App() {
         } catch (err) {
           console.error(`Failed to fetch from ${platform}:`, err);
         }
-      }
-      
-      // Handle Custom Feeds
-      if (rssFeeds.length > 0) {
-        try {
-          const formData = new FormData()
-          formData.append('query', activeQuery)
-          formData.append('location', activeLoc)
-          formData.append('custom_feeds', JSON.stringify(rssFeeds))
-          const response = await fetch(`${API_BASE_URL}/jobs`, { method: 'POST', body: formData })
-          const data = await response.json()
-          if (Array.isArray(data) && data.length > 0 && !data[0].error) {
-            anySuccess = true;
-            allFoundJobs = [...allFoundJobs, ...data].sort((a, b) => (b.relevance || 0) - (a.relevance || 0));
-            setJobs(allFoundJobs);
-          }
-        } catch (err) {}
-      }
-
-      // Handle XML File
-      if (xmlFile) {
-        try {
-          const formData = new FormData()
-          formData.append('query', activeQuery)
-          formData.append('location', activeLoc)
-          formData.append('file', xmlFile)
-          const response = await fetch(`${API_BASE_URL}/jobs`, { method: 'POST', body: formData })
-          const data = await response.json()
-          if (Array.isArray(data) && data.length > 0 && !data[0].error) {
-            anySuccess = true;
-            allFoundJobs = [...allFoundJobs, ...data].sort((a, b) => (b.relevance || 0) - (a.relevance || 0));
-            setJobs(allFoundJobs);
-          }
-        } catch (err) {}
       }
 
       clearInterval(logInterval)
