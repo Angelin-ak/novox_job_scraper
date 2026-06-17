@@ -1,6 +1,6 @@
-# ApexScrape: Real-Time Job Aggregator
+# NovoxScraper: Real-Time Job Aggregator
 
-ApexScrape is a professional, full-stack real-time job aggregator that scrapes and aggregates job listings across multiple major career portals simultaneously. The project has a decoupled client-server architecture, featuring a FastAPI backend and a Vite-React frontend.
+NovoxScraper is a professional, full-stack real-time job aggregator that scrapes and aggregates job listings across multiple major career portals simultaneously. The project has a decoupled client-server architecture, featuring a FastAPI backend and a Vite-React frontend.
 
 ---
 
@@ -23,6 +23,9 @@ The application is structured into two main components:
 *   **Offline Bookmarks Manager**: Users can bookmark job listings. Bookmarked items are persisted locally in `localStorage` and can be managed in a dedicated tab.
 *   **CSV Spreadsheet Export**: Generates and downloads a `.csv` file containing the currently filtered search results for tracking applications in Excel or Google Sheets.
 *   **Responsive Theme Switcher**: Toggle between Dark Mode and Light Mode with HSL variables.
+*   **Custom Skills Fit Analysis**: Users can enter a comma-separated list of their skills. The dashboard highlights matched vs. missing skills on individual job cards and in the preview pane, showing a dynamic percentage score ("Skill Fit").
+*   **Skill-Based Search Fallback**: If the Job Role/Title is left blank, the scraper automatically falls back to the user's skills input as the query keywords to discover related jobs.
+*   **Sorting & Filtering by Skill Fit**: Filter listings to display only positions matching at least one user skill, and sort the list dynamically by match percentage.
 
 ---
 
@@ -123,10 +126,10 @@ To containerize the backend application:
 
 1.  Build the Docker image:
     ```bash
-    docker build -t apexscrape-backend ./backend
+    docker build -t novoxscraper-backend ./backend
     ```
 
 2.  Run the container:
     ```bash
-    docker run -d -p 8000:8000 apexscrape-backend
+    docker run -d -p 8000:8000 novoxscraper-backend
     ```
