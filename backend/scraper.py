@@ -1059,11 +1059,41 @@ class JobScraper:
             "hr_details": "Not Disclosed"
         }
         
-        # Determine how to fetch based on source
-        use_selenium = source.lower() in ["linkedin", "indeed", "glassdoor", "naukri", "foundit", "shine", "hirist"]
+        src_key = source.lower().strip()
+        selectors = {
+            "linkedin": [".show-more-less-html__markup", ".description__text", "#job-description", ".job-description", ".jobs-description__content"],
+            "indeed": ["#jobDescriptionText", ".jobsearch-JobComponent-description", ".jobsearch-jobDescriptionText"],
+            "naukri": [".job-desc", ".description", "[class*='job-desc']", ".styles_job-desc__25voo", "#job-desc"],
+            "glassdoor": ["#JobDescriptionContainer", "[data-test='jobDescriptionText']", ".desc", ".jobDescriptionText"],
+            "internshala": [".job_detail_container", ".text-container", ".internship_details"],
+            "foundit": [".jobDesc", ".description", ".job-desc-text", "[class*='description']"],
+            "shine": [".jobDetail_js-jobDesc__N2t08", ".jobDesc", ".description", "[class*='description']"],
+            "hirist": [".joblist-detail-v2", ".description", "[class*='description']", ".MuiPaper-root"],
+            "weworkremotely": [".lis-container__job__content__description", "#job-details", ".job-details", "#job-listing-show-container", ".listing-container", ".description"]
+        }
+        
+        target_selectors = selectors.get(src_key, [".description", "[class*='description']"])
         
         html_content = ""
-        if use_selenium:
+        success_with_requests = False
+        
+        # 1. Optimistic Fast Path: Try pure requests first!
+        try:
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"}
+            response = requests.get(url, headers=headers, timeout=6)
+            if response.status_code == 200:
+                soup_test = BeautifulSoup(response.text, "html.parser")
+                # Ensure it's not a bot wall or empty SPA by checking if our target selector exists
+                for sel in target_selectors:
+                    if soup_test.select_one(sel):
+                        html_content = response.text
+                        success_with_requests = True
+                        break
+        except Exception as e:
+            pass
+            
+        # 2. Fallback to Heavy Selenium if requests was blocked or it's an SPA
+        if not success_with_requests:
             driver = self.get_driver()
             if driver:
                 try:
@@ -1074,14 +1104,6 @@ class JobScraper:
                     print(f"Error loading detail page via Selenium: {e}")
                 finally:
                     driver.quit()
-        else:
-            try:
-                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"}
-                response = requests.get(url, headers=headers, timeout=10)
-                if response.status_code == 200:
-                    html_content = response.text
-            except Exception as e:
-                print(f"Error loading detail page via requests: {e}")
                 
         if html_content:
             try:
