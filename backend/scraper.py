@@ -369,8 +369,7 @@ class JobScraper:
         return jobs
 
     def scrape_shine(self, query, location):
-        driver = self.get_driver()
-        if not driver: return []
+        import requests
         jobs = []
         keywords = self._get_keywords(query)
         try:
@@ -378,39 +377,48 @@ class JobScraper:
                 q = kw.lower().replace(" ", "-")
                 l = location.lower().replace(" ", "-")
                 url = f"https://www.shine.com/job-search/{q}-jobs-in-{l}"
+                
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5",
+                    "Referer": "https://www.shine.com/",
+                }
+                
                 try:
-                    driver.get(url)
-                    time.sleep(2)
-                    WebDriverWait(driver, 5).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, "[class*='jobCardNova']"))
-                    )
-                    soup = BeautifulSoup(driver.page_source, "html.parser")
-                    job_cards = soup.select("[class*='jobCardNova']")
-                    for card in job_cards[:5]:
-                        title_link = card.select_one("h3[class*='Title'] a, h3 a, a")
-                        company_elem = card.select_one("span[class*='Company'], [class*='company'], .jdTruncationCompany")
-                        loc_elem = card.select_one("[class*='location'], .jobCardNova_location")
-                        exp_elem = card.select_one("[class*='experience'], [class*='exp'], .jobCardNova_experience")
-                        sal_elem = card.select_one("[class*='salary'], .jobCardNova_salary")
-                        
-                        if title_link:
-                            link = title_link.get("href", "")
-                            if link and not link.startswith("http"):
-                                link = f"https://www.shine.com{link}"
-                                
-                            jobs.append({
-                                "title": title_link.get_text(strip=True),
-                                "company": company_elem.get_text(strip=True) if company_elem else "N/A",
-                                "location": loc_elem.get_text(strip=True) if loc_elem else location,
-                                "salary": sal_elem.get_text(strip=True) if sal_elem else "Not Disclosed",
-                                "link": link or url,
-                                "source": "Shine",
-                                "description": f"Experience: {exp_elem.get_text(strip=True) if exp_elem else 'N/A'}. View details on Shine.com."
-                            })
+                    response = requests.get(url, headers=headers, timeout=10)
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.text, "html.parser")
+                        job_cards = soup.select("[class*='jobCardNova']")
+                        if not job_cards:
+                            job_cards = soup.select(".jobCard_jobCard__jjUmu")
+                            
+                        for card in job_cards[:5]:
+                            title_link = card.select_one("h3[class*='Title'] a, h3 a, a")
+                            company_elem = card.select_one("span[class*='Company'], [class*='company'], .jdTruncationCompany")
+                            loc_elem = card.select_one("[class*='location'], .jobCardNova_location")
+                            exp_elem = card.select_one("[class*='experience'], [class*='exp'], .jobCardNova_experience")
+                            sal_elem = card.select_one("[class*='salary'], .jobCardNova_salary")
+                            
+                            if title_link:
+                                link = title_link.get("href", "")
+                                if link and not link.startswith("http"):
+                                    link = f"https://www.shine.com{link}"
+                                    
+                                jobs.append({
+                                    "title": title_link.get_text(strip=True),
+                                    "company": company_elem.get_text(strip=True) if company_elem else "N/A",
+                                    "location": loc_elem.get_text(strip=True) if loc_elem else location,
+                                    "salary": sal_elem.get_text(strip=True) if sal_elem else "Not Disclosed",
+                                    "link": link or url,
+                                    "source": "Shine",
+                                    "description": f"Experience: {exp_elem.get_text(strip=True) if exp_elem else 'N/A'}. View details on Shine.com."
+                                })
                 except Exception as e:
                     print(f"Shine individual keyword '{kw}' Error: {e}")
-        except Exception as e: print(f"Shine general Error: {e}")
-        finally: driver.quit()
+        except Exception as e:
+            print(f"Shine general Error: {e}")
+            
         return jobs
 
     def scrape_hirist(self, query, location):

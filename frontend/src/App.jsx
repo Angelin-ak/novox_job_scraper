@@ -218,12 +218,12 @@ function App() {
   const [selectedPlatforms, setSelectedPlatforms] = useState({
     Internshala: true,
     WeWorkRemotely: true,
+    Shine: true,
     Naukri: true,
     LinkedIn: true,
     Indeed: true,
     Glassdoor: true,
     Foundit: true,
-    Shine: true,
     Hirist: true
   })
 
