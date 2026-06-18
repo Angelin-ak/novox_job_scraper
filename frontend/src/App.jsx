@@ -784,25 +784,14 @@ function App() {
         const results = await Promise.all(fetchPromises);
         
         let batchUpdated = false;
-        let serverBusy = null;
 
         results.forEach(data => {
-            if (data && data.error === "SERVER_BUSY") {
-                serverBusy = data.message;
-            }
-            else if (Array.isArray(data) && data.length > 0 && !data[0].error) {
+            if (Array.isArray(data) && data.length > 0 && !data[0].error) {
               anySuccess = true;
               batchUpdated = true;
               allFoundJobs = [...allFoundJobs, ...data];
             }
         });
-        
-        if (serverBusy) {
-            setError(`🚦 ${serverBusy}`);
-            clearInterval(logInterval);
-            setLoading(false);
-            return; // Stop scraping immediately!
-        }
 
         if (batchUpdated) {
             allFoundJobs.sort((a, b) => (b.relevance || 0) - (a.relevance || 0));
