@@ -181,7 +181,6 @@ class JobScraper:
                 url = f"https://www.linkedin.com/jobs/search?keywords={kw}&location={location}"
                 try:
                     driver.get(url)
-                    time.sleep(2)
                     soup = BeautifulSoup(driver.page_source, "html.parser")
                     job_cards = soup.select(".base-search-card")
                     for card in job_cards[:5]:
@@ -255,7 +254,6 @@ class JobScraper:
                 url = f"https://in.indeed.com/jobs?q={kw}&l={location}"
                 try:
                     driver.get(url)
-                    time.sleep(2)
                     soup = BeautifulSoup(driver.page_source, "html.parser")
                     job_cards = soup.select(".job_seen_beacon")
                     for card in job_cards[:5]:
@@ -292,7 +290,6 @@ class JobScraper:
                 url = f"https://www.glassdoor.com/Job/jobs.htm?sc.keyword={kw}&locK={location}"
                 try:
                     driver.get(url)
-                    time.sleep(2)
                     soup = BeautifulSoup(driver.page_source, "html.parser")
                     job_cards = soup.select(".react-job-listing, .job-listing")
                     for card in job_cards[:5]:
@@ -328,7 +325,6 @@ class JobScraper:
                 url = f"https://www.foundit.in/srp/results?query={kw}&locations={location}"
                 try:
                     driver.get(url)
-                    time.sleep(2)
                     WebDriverWait(driver, 5).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, ".cardContainer"))
                     )
@@ -432,7 +428,6 @@ class JobScraper:
                 url = f"https://www.hirist.tech/k/{q}-jobs"
                 try:
                     driver.get(url)
-                    time.sleep(2)
                     WebDriverWait(driver, 5).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, ".joblist-card-v2"))
                     )
@@ -871,12 +866,7 @@ class JobScraper:
         if total_workers == 0:
             return [{"error": "NO_SOURCES_SELECTED", "details": "Please select at least one job source platform."}]
         
-        # Test driver first (only if Selenium-based platforms are selected)
-        if len(platforms) > 0:
-            test_driver = self.get_driver()
-            if not test_driver:
-                return [{"error": "CHROME_CRASH", "details": self.last_driver_error or "Driver initialized as None"}]
-            test_driver.quit()
+        # Test driver removed to eliminate 5s-10s overhead per request!
         
         # Run scraping concurrently to make it fast, but limit max_workers to 3 to prevent
         # Render's free tier from running out of memory (OOM) and crashing when launching 8 Chrome instances at once.
@@ -1098,7 +1088,6 @@ class JobScraper:
             if driver:
                 try:
                     driver.get(url)
-                    time.sleep(2)
                     html_content = driver.page_source
                 except Exception as e:
                     print(f"Error loading detail page via Selenium: {e}")

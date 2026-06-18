@@ -63,8 +63,36 @@ async def read_root():
         "usage": "Go to /jobs?query=python&location=kerala to scrape jobs"
     }
 
+import threading
+
+scraping_lock = threading.Lock()
+current_scrape_start_time = None
+ESTIMATED_SCRAPE_TIME = 60  # Assume an average scrape takes 60 seconds
+
+def acquire_scrape_lock():
+    global current_scrape_start_time
+    if scraping_lock.acquire(blocking=False):
+        current_scrape_start_time = time.time()
+        return True
+    return False
+
+def release_scrape_lock():
+    global current_scrape_start_time
+    current_scrape_start_time = None
+    try:
+        scraping_lock.release()
+    except RuntimeError:
+        pass
+
+def get_eta():
+    if current_scrape_start_time is None:
+        return 0
+    elapsed = time.time() - current_scrape_start_time
+    remaining = max(10, int(ESTIMATED_SCRAPE_TIME - elapsed))
+    return remaining
+
 @app.get("/jobs", tags=["Jobs"])
-async def get_jobs(
+def get_jobs(
     query: str = Query("Python", description="Job title or keywords"),
     location: str = Query("Kerala", description="Location to search in"),
     sources: Optional[str] = Query(None, description="Comma-separated list of job source boards to search"),
@@ -89,12 +117,25 @@ async def get_jobs(
             except Exception as parse_err:
                 print(f"Error parsing custom_feeds parameter: {parse_err}")
 
-        jobs = scraper.get_all_jobs(
-            query=query, 
-            location=location, 
-            selected_platforms=selected_platforms, 
-            custom_feeds=parsed_custom_feeds
-        )
+        # Try to acquire lock if we actually need to scrape
+        needs_scrape = bool(selected_platforms)
+        lock_acquired = False
+        if needs_scrape:
+            if not acquire_scrape_lock():
+                eta = get_eta()
+                return {"error": "SERVER_BUSY", "message": f"Server is busy right now processing another user's request. Please come back in {eta} seconds.", "eta_seconds": eta}
+            lock_acquired = True
+
+        try:
+            jobs = scraper.get_all_jobs(
+                query=query, 
+                location=location, 
+                selected_platforms=selected_platforms, 
+                custom_feeds=parsed_custom_feeds
+            )
+        finally:
+            if lock_acquired:
+                release_scrape_lock()
         
         if jobs and not (isinstance(jobs[0], dict) and "error" in jobs[0]) and not custom_feeds:
             set_cached_jobs(query, location, sources, jobs)
@@ -104,7 +145,7 @@ async def get_jobs(
         return {"error": f"Scraping failed: {str(e)}"}
 
 @app.post("/jobs", tags=["Jobs"])
-async def get_jobs_post(
+def get_jobs_post(
     query: str = Form("Python"),
     location: str = Form("Kerala"),
     sources: Optional[str] = Form(None),
@@ -132,12 +173,26 @@ async def get_jobs_post(
 
         jobs = []
         if selected_platforms or parsed_custom_feeds:
-            jobs = scraper.get_all_jobs(
-                query=query, 
-                location=location, 
-                selected_platforms=selected_platforms,
-                custom_feeds=parsed_custom_feeds
-            )
+            needs_scrape = bool(selected_platforms)
+            lock_acquired = False
+            
+            if needs_scrape:
+                if not acquire_scrape_lock():
+                    eta = get_eta()
+                    return {"error": "SERVER_BUSY", "message": f"Server is busy right now processing another user's request. Please come back in {eta} seconds.", "eta_seconds": eta}
+                lock_acquired = True
+
+            try:
+                jobs = scraper.get_all_jobs(
+                    query=query, 
+                    location=location, 
+                    selected_platforms=selected_platforms,
+                    custom_feeds=parsed_custom_feeds
+                )
+            finally:
+                if lock_acquired:
+                    release_scrape_lock()
+                    
             if jobs and isinstance(jobs[0], dict) and "error" in jobs[0]:
                 if jobs[0]["error"] == "CHROME_CRASH" and file:
                     jobs = []
@@ -145,7 +200,7 @@ async def get_jobs_post(
                     return jobs
         
         if file:
-            content = await file.read()
+            content = file.file.read()
             xml_text = content.decode("utf-8", errors="ignore")
             file_jobs = scraper.process_xml_jobs(xml_text, query=query, location=location, filename=file.filename)
             jobs.extend(file_jobs)

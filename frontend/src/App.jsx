@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import RunnerGame from './RunnerGame'
 import './App.css'
 
 // Professional SVG Icon Components
@@ -129,6 +130,13 @@ function App() {
   const [progress, setProgress] = useState(0)
   const [parsingResume, setParsingResume] = useState(false)
   const [resumeAchievements, setResumeAchievements] = useState([])
+  const [userProfile, setUserProfile] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('userProfile')) || {}
+    } catch {
+      return {}
+    }
+  })
 
   useEffect(() => {
     let interval;
@@ -220,11 +228,7 @@ function App() {
     WeWorkRemotely: true,
     Shine: true,
     Naukri: true,
-    LinkedIn: true,
-    Indeed: true,
-    Glassdoor: true,
-    Foundit: true,
-    Hirist: true
+    LinkedIn: true
   })
 
   // Local XML upload file state
@@ -751,37 +755,61 @@ function App() {
         } catch (err) {}
       }
 
-      // === RUN PLATFORM SCRAPERS SEQUENTIALLY === //
-      // Make sequential requests for each platform to prevent backend OOM (Out Of Memory)
-      // and prevent Render 100-second timeouts by breaking it into smaller chunks!
-      // (The fast platforms like Internshala are at the top of the list and will finish instantly)
-      for (const platform of activePlatforms) {
-        try {
-          const formData = new FormData()
-          formData.append('query', activeQuery)
-          formData.append('location', activeLoc)
-          formData.append('sources', platform)
-          
-          const response = await fetch(`${API_BASE_URL}/jobs`, {
-            method: 'POST',
-            body: formData
-          })
-          const data = await response.json()
-          
-          if (Array.isArray(data) && data.length > 0 && !data[0].error) {
-            anySuccess = true;
-            allFoundJobs = [...allFoundJobs, ...data];
-            // Sort by relevance
-            allFoundJobs.sort((a, b) => (b.relevance || 0) - (a.relevance || 0));
+      // === RUN PLATFORM SCRAPERS IN BATCHES OF 2 === //
+      // This doubles the speed (cuts total time in half) while keeping memory 
+      // safely under Render's 512MB limit by only running 2 Chrome instances max!
+      for (let i = 0; i < activePlatforms.length; i += 2) {
+        const batch = activePlatforms.slice(i, i + 2);
+        
+        const fetchPromises = batch.map(async (platform) => {
+          try {
+            const formData = new FormData()
+            formData.append('query', activeQuery)
+            formData.append('location', activeLoc)
+            formData.append('sources', platform)
             
-            // Progressively update the UI!
-            setJobs(allFoundJobs);
-            if (!selectedJob || allFoundJobs.length === data.length) {
-              setSelectedJob(allFoundJobs[0]);
-            }
+            const response = await fetch(`${API_BASE_URL}/jobs`, {
+              method: 'POST',
+              body: formData
+            })
+            const data = await response.json()
+            return data;
+          } catch (err) {
+            console.error(`Failed to fetch from ${platform}:`, err);
+            return null;
           }
-        } catch (err) {
-          console.error(`Failed to fetch from ${platform}:`, err);
+        });
+
+        // Wait for this batch of 2 to finish
+        const results = await Promise.all(fetchPromises);
+        
+        let batchUpdated = false;
+        let serverBusy = null;
+
+        results.forEach(data => {
+            if (data && data.error === "SERVER_BUSY") {
+                serverBusy = data.message;
+            }
+            else if (Array.isArray(data) && data.length > 0 && !data[0].error) {
+              anySuccess = true;
+              batchUpdated = true;
+              allFoundJobs = [...allFoundJobs, ...data];
+            }
+        });
+        
+        if (serverBusy) {
+            setError(`🚦 ${serverBusy}`);
+            clearInterval(logInterval);
+            setLoading(false);
+            return; // Stop scraping immediately!
+        }
+
+        if (batchUpdated) {
+            allFoundJobs.sort((a, b) => (b.relevance || 0) - (a.relevance || 0));
+            setJobs([...allFoundJobs]); // create a new array to force React to re-render
+            if (!selectedJob || allFoundJobs.length <= 100) { 
+                setSelectedJob(allFoundJobs[0]);
+            }
         }
       }
 
@@ -789,7 +817,7 @@ function App() {
 
       if (anySuccess) {
         updateRecentSearches(activeQuery, activeLoc)
-      } else if (allFoundJobs.length === 0) {
+      } else if (allFoundJobs.length === 0 && !error) {
         setError('No relevant jobs found matching the search keywords or location.')
       }
 
@@ -1033,7 +1061,7 @@ function App() {
 
       {/* Main Workspace Area */}
       <main className="main-container">
-        {loading && jobs.length === 0 && (
+        {loading && (
           <div className="console-progress-card-overlay animate-fade-in">
             <div className="console-progress-card premium-progress-card animate-slide-up">
               {/* Progress Bar Container */}
@@ -1053,6 +1081,10 @@ function App() {
                 <h3>Searching Job Boards...</h3>
                 <p className="loading-subtitle">Scraping and analyzing job boards in real-time</p>
               </div>
+
+              {/* Interactive Mini Game */}
+              <RunnerGame />
+              
               
               {/* Trivia Slideshow (Distraction & Value Addition) */}
               <div className="trivia-card">
