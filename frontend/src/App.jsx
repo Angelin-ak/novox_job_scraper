@@ -807,7 +807,7 @@ function App() {
       if (anySuccess) {
         updateRecentSearches(activeQuery, activeLoc)
       } else if (allFoundJobs.length === 0 && !error) {
-        setError('No relevant jobs found matching the search keywords or location.')
+        setError('🚦 Server is busy right now. Please try again later.')
       }
 
     } catch (err) {
