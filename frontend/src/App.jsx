@@ -123,6 +123,7 @@ function App() {
   const [location, setLocation] = useState('')
   const [jobs, setJobs] = useState([])
   const [loading, setLoading] = useState(false)
+  const abortControllerRef = useRef(null)
   const [error, setError] = useState(null)
   const [statusLogs, setStatusLogs] = useState([])
   const [showAdvancedPlatforms, setShowAdvancedPlatforms] = useState(false)
@@ -515,6 +516,11 @@ function App() {
     localStorage.removeItem('userSkills')
     checkServerHealth()
     fetchApplications()
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+    }
   }, [])
 
   // Save skills input to localStorage
@@ -653,6 +659,14 @@ function App() {
     return { matched, missing, otherUserSkills }
   }
 
+  const handleCancelSearch = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    setLoading(false)
+  }
+
   // Main scraper fetch trigger
   const handleScrape = async (e, customQuery = null, customLoc = null) => {
     if (e) e.preventDefault()
@@ -682,6 +696,12 @@ function App() {
       setError('Please select at least one job source platform, upload an XML/RSS file, or subscribe to an RSS feed.')
       return
     }
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    abortControllerRef.current = new AbortController()
+    const signal = abortControllerRef.current.signal
 
     setLoading(true)
     setError(null)
@@ -726,7 +746,7 @@ function App() {
           formData.append('query', activeQuery)
           formData.append('location', activeLoc)
           formData.append('custom_feeds', JSON.stringify(rssFeeds))
-          const response = await fetch(`${API_BASE_URL}/jobs`, { method: 'POST', body: formData })
+          const response = await fetch(`${API_BASE_URL}/jobs`, { method: 'POST', body: formData, signal })
           const data = await response.json()
           if (Array.isArray(data) && data.length > 0 && !data[0].error) {
             anySuccess = true;
@@ -734,7 +754,9 @@ function App() {
             setJobs(allFoundJobs);
             if (!selectedJob || allFoundJobs.length === data.length) setSelectedJob(allFoundJobs[0]);
           }
-        } catch (err) {}
+        } catch (err) {
+          if (err?.name === 'AbortError') throw err;
+        }
       }
 
       // 2. Handle XML File (Instant)
@@ -744,7 +766,7 @@ function App() {
           formData.append('query', activeQuery)
           formData.append('location', activeLoc)
           formData.append('file', xmlFile)
-          const response = await fetch(`${API_BASE_URL}/jobs`, { method: 'POST', body: formData })
+          const response = await fetch(`${API_BASE_URL}/jobs`, { method: 'POST', body: formData, signal })
           const data = await response.json()
           if (Array.isArray(data) && data.length > 0 && !data[0].error) {
             anySuccess = true;
@@ -752,13 +774,16 @@ function App() {
             setJobs(allFoundJobs);
             if (!selectedJob) setSelectedJob(allFoundJobs[0]);
           }
-        } catch (err) {}
+        } catch (err) {
+          if (err?.name === 'AbortError') throw err;
+        }
       }
 
       // === RUN PLATFORM SCRAPERS IN BATCHES OF 2 === //
       // This doubles the speed (cuts total time in half) while keeping memory 
       // safely under Render's 512MB limit by only running 2 Chrome instances max!
       for (let i = 0; i < activePlatforms.length; i += 2) {
+        if (signal.aborted) break;
         const batch = activePlatforms.slice(i, i + 2);
         
         const fetchPromises = batch.map(async (platform) => {
@@ -770,11 +795,15 @@ function App() {
             
             const response = await fetch(`${API_BASE_URL}/jobs`, {
               method: 'POST',
-              body: formData
+              body: formData,
+              signal
             })
             const data = await response.json()
             return data;
           } catch (err) {
+            if (err?.name === 'AbortError') {
+              throw err;
+            }
             console.error(`Failed to fetch from ${platform}:`, err);
             return null;
           }
@@ -812,10 +841,14 @@ function App() {
 
     } catch (err) {
       clearInterval(logInterval)
+      if (err?.name === 'AbortError') {
+        return; // Aborted by user, do not set an error message
+      }
       setError(`Failed to connect to backend: ${err.message}. Make sure the FastAPI server is running.`)
     } finally {
       setLoading(false)
       clearInterval(logInterval)
+      abortControllerRef.current = null
     }
   }
 
@@ -1053,6 +1086,16 @@ function App() {
         {loading && (
           <div className="console-progress-card-overlay animate-fade-in">
             <div className="console-progress-card premium-progress-card animate-slide-up">
+              {/* Close button */}
+              <button 
+                className="btn-close-console"
+                onClick={handleCancelSearch}
+                aria-label="Close search"
+                title="Cancel search"
+              >
+                ✕
+              </button>
+              
               {/* Progress Bar Container */}
               <div className="loading-progress-bar-container">
                 <div className="loading-progress-bar" style={{ width: `${progress}%` }}></div>

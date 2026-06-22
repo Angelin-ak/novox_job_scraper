@@ -640,6 +640,7 @@
   text-align: left;
   position: relative;
   min-height: 240px;
+  min-width: 0; /* Prevents overflow inside flex/grid container */
 }
 
 .job-grid-card:hover {
@@ -666,6 +667,7 @@
   flex-direction: column;
   gap: 4px;
   flex: 1;
+  min-width: 0; /* Allows text elements to wrap without stretching container */
 }
 
 .card-title {
@@ -674,6 +676,8 @@
   color: var(--text-main);
   margin: 0;
   line-height: 1.35;
+  word-break: break-word; /* For WebKit compatibility */
+  overflow-wrap: break-word; /* Wraps long unbroken words */
 }
 
 .card-company {
@@ -681,6 +685,8 @@
   font-weight: 650;
   color: var(--primary);
   margin: 0;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .card-location {
@@ -690,6 +696,8 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .card-desc-snippet {
@@ -903,6 +911,8 @@
   color: var(--text-main);
   line-height: 1.25;
   margin: 4px 0 0 0;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .details-subtitle {
@@ -1474,6 +1484,33 @@
   overflow: hidden;
   border-top: 4px solid var(--primary);
 }
+
+/* Close button for progress card */
+.btn-close-console {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(15, 23, 42, 0.05);
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+  z-index: 105;
+}
+
+.btn-close-console:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  transform: scale(1.05);
+}
+
 
 /* Simulated Progress Bar */
 .loading-progress-bar-container {
